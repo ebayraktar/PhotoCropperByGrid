@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">Photo Cropper By Grid</string>
+    <string name="crop">Kırp</string>
+    <string name="todo">Todo</string>
+</resources>
