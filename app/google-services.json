@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "295770840262",
+    "project_id": "photo-cropper",
+    "storage_bucket": "photo-cropper.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:295770840262:android:247ca9f6ea5afe0c57cbc7",
+        "android_client_info": {
+          "package_name": "com.bayraktar.photo_cropper"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "295770840262-jm7oc9em39ikbful657ggqk1g5g5c761.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCfBQOxtYHWGLG3KilbqUb4bhRh1OLm6Zg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "295770840262-jm7oc9em39ikbful657ggqk1g5g5c761.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
