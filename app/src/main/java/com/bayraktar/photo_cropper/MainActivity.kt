@@ -9,6 +9,7 @@ import android.graphics.*
 import android.graphics.drawable.BitmapDrawable
 import android.net.Uri
 import android.os.Bundle
+import android.os.Environment
 import android.provider.MediaStore
 import android.util.Log
 import android.view.View
@@ -18,6 +19,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.core.content.ContextCompat
+import com.google.firebase.crashlytics.FirebaseCrashlytics
 
 
 class MainActivity : AppCompatActivity(), ViewTreeObserver.OnGlobalLayoutListener {
@@ -139,24 +141,34 @@ class MainActivity : AppCompatActivity(), ViewTreeObserver.OnGlobalLayoutListene
     }
 
     private fun crop() {
+        if (!isExternalStorageAvailable() || isExternalStorageReadOnly()) {
+            AlertDialog.Builder(this)
+                .setMessage("Kayıt yeri bulunamadı")
+                .setPositiveButton("TAMAM", null)
+                .create().show()
+            return
+        }
+
         if (imageView.drawable !is BitmapDrawable) {
             chooseImage()
             return
         }
+
         val bitmap = (imageView.drawable as BitmapDrawable).bitmap
         val bitmapList = cropImageByGrid(bitmap)
 
         val imageRepository = ImageRepository(this)
 
-        var message = "HATA OLUŞTU"
         if (bitmapList.isNotEmpty()) {
-            (bitmapList.indices).forEach { i ->
-                imageRepository.save(bitmapList[i])
-            }
-            message = "İşlem başarılı"
+            imageRepository.save(bitmapList)
+        } else {
+            FirebaseCrashlytics.getInstance().log("Resim parçalanırken hata oluştu")
+            Toast.makeText(
+                this,
+                "Resim parçalanırken hata oluştu. Hata bildirimi gönderildi.",
+                Toast.LENGTH_SHORT
+            ).show()
         }
-
-        Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
 
     }
 
@@ -299,6 +311,16 @@ class MainActivity : AppCompatActivity(), ViewTreeObserver.OnGlobalLayoutListene
         if (dataUri == null) return
         imageView.setImageURI(dataUri)
         imageView.setImageBitmap(getResultBitmap(scaleBitmap((imageView.drawable as BitmapDrawable).bitmap)))
+    }
+
+    private fun isExternalStorageReadOnly(): Boolean {
+        val extStorageState = Environment.getExternalStorageState()
+        return Environment.MEDIA_MOUNTED_READ_ONLY == extStorageState
+    }
+
+    private fun isExternalStorageAvailable(): Boolean {
+        val extStorageState = Environment.getExternalStorageState()
+        return Environment.MEDIA_MOUNTED == extStorageState
     }
 
 }

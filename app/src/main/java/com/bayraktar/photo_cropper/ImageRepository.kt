@@ -1,6 +1,6 @@
 package com.bayraktar.photo_cropper
 
-import android.content.ContentUris
+import android.app.AlertDialog
 import android.content.ContentValues
 import android.content.Context
 import android.graphics.Bitmap
@@ -9,66 +9,86 @@ import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
 import androidx.annotation.RequiresApi
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import io.reactivex.rxjava3.android.schedulers.AndroidSchedulers
+import io.reactivex.rxjava3.core.Observable
+import io.reactivex.rxjava3.core.Observer
+import io.reactivex.rxjava3.disposables.Disposable
+import io.reactivex.rxjava3.schedulers.Schedulers
 import java.io.File
 import java.io.FileOutputStream
 import java.io.OutputStream
+
 
 /**
  * Created by Emre BAYRAKTAR on 5/15/2021.
  */
 
-private val PROJECTION = arrayOf(MediaStore.Images.Media._ID)
-private const val QUERY = MediaStore.Images.Media.DISPLAY_NAME + " = ?"
-
 class ImageRepository(private val context: Context) {
-    private val collection =
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) MediaStore.Images.Media.getContentUri(
-            MediaStore.VOLUME_EXTERNAL
-        ) else MediaStore.Video.Media.EXTERNAL_CONTENT_URI
 
+    fun save(bitmapList: List<Bitmap>) {
 
-    suspend fun getLocalUri(filename: String): Uri? =
-        withContext(Dispatchers.IO) {
-            val resolver = context.contentResolver
+        val observable = Observable.just(bitmapList)
 
-            resolver.query(collection, PROJECTION, QUERY, arrayOf(filename), null)
-                ?.use { cursor ->
-                    if (cursor.count > 0) {
-                        cursor.moveToFirst()
-                        return@withContext ContentUris.withAppendedId(
-                            collection,
-                            cursor.getLong(0)
-                        )
-                    }
+        val observer = object : Observer<List<Bitmap>> {
+            override fun onSubscribe(d: Disposable?) {
+                //onSubscribe
+            }
+
+            override fun onNext(bitmaps: List<Bitmap>) {
+
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    for (element in bitmaps)
+                        saveImageInQ(element)
+                } else {
+                    for (element in bitmaps)
+                        saveTheImageLegacyStyle(element)
                 }
+            }
 
-            null
+            override fun onError(e: Throwable?) {
+                AlertDialog.Builder(context)
+                    .setMessage("Hata: " + e?.message)
+                    .setPositiveButton("TAMAM", null)
+                    .create().show()
+            }
+
+            override fun onComplete() {
+                AlertDialog.Builder(context)
+                    .setMessage("İşlem başarılı.")
+                    .setPositiveButton("TAMAM", null)
+                    .create().show()
+            }
         }
 
-    fun save(bitmap: Bitmap) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) saveImageInQ(bitmap)
-        else saveTheImageLegacyStyle(bitmap)
+        observable
+            .subscribeOn(Schedulers.io())
+            .observeOn(AndroidSchedulers.mainThread())
+            .subscribe(observer)
+
     }
 
     //Make sure to call this function on a worker thread, else it will block main thread
     private fun saveTheImageLegacyStyle(bitmap: Bitmap) {
         val filename = "IMG_${System.currentTimeMillis()}.jpg"
-        val imagesDir =
-            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES)
+        val folderName = Environment.getExternalStoragePublicDirectory(
+            Environment.DIRECTORY_PICTURES + "/PhotoCropper"
+        )
+        if (!folderName.exists() && !folderName.mkdir())
+            throw RuntimeException("PhotoCropper klasörü oluşturulamadı!")
 
-        val image = File(imagesDir, filename)
-        val fos = FileOutputStream(image)
-        fos.use {
-            bitmap.compress(Bitmap.CompressFormat.JPEG, 70, it)
-        }
-        fos.close()
+        val file = File(
+            folderName, filename
+        )
+
+        val out = FileOutputStream(file)
+        bitmap.compress(Bitmap.CompressFormat.JPEG, 100, out)
+        out.flush()
+        out.close()
     }
 
     //Make sure to call this function on a worker thread, else it will block main thread
     @RequiresApi(Build.VERSION_CODES.Q)
-    private fun saveImageInQ(bitmap: Bitmap): Uri {
+    private fun saveImageInQ(bitmap: Bitmap) {
 
         val filename = "IMG_${System.currentTimeMillis()}.jpg"
         var fos: OutputStream?
@@ -96,34 +116,5 @@ class ImageRepository(private val context: Context) {
         contentValues.clear()
         contentValues.put(MediaStore.Video.Media.IS_PENDING, 0)
         imageUri?.let { contentResolver.update(it, contentValues, null, null) }
-
-        return imageUri!!
-
     }
-
-
-    @RequiresApi(Build.VERSION_CODES.Q)
-    private suspend fun saveQ(): Uri = withContext(Dispatchers.IO) {
-
-        val values = ContentValues().apply {
-            put(MediaStore.Video.Media.DISPLAY_NAME, System.currentTimeMillis().toString())
-            put(MediaStore.Video.Media.RELATIVE_PATH, "Images/PhotoCropper")
-            put(MediaStore.Video.Media.MIME_TYPE, "image/jpeg")
-            put(MediaStore.Video.Media.IS_PENDING, 1)
-        }
-
-        val resolver = context.contentResolver
-        val uri = resolver.insert(collection, values)
-
-        uri?.let {
-//            val sink = Okio.
-            values.clear()
-            values.put(MediaStore.Video.Media.IS_PENDING, 0)
-            resolver.update(uri, values, null, null)
-        } ?: throw RuntimeException("MediaStore failed for some reason")
-
-        uri
-    }
-
-
 }
