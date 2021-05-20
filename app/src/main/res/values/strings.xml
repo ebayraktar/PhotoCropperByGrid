@@ -2,4 +2,6 @@
     <string name="app_name">Photo Cropper By Grid</string>
     <string name="crop">Kırp</string>
     <string name="todo">Todo</string>
+    <string name="error_saving_image">Fotoğraf kaydedilemedi</string>
+    <string name="image_saved">Fotoğraf kaydedildi</string>
 </resources>

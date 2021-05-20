@@ -3,28 +3,36 @@ package com.bayraktar.photo_cropper
 import android.Manifest
 import android.app.Activity
 import android.app.AlertDialog
+import android.content.ContentValues
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.*
 import android.graphics.drawable.BitmapDrawable
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.os.Environment
 import android.provider.MediaStore
-import android.util.Log
 import android.view.View
 import android.view.ViewTreeObserver
-import android.widget.*
+import android.widget.Button
+import android.widget.ImageView
+import android.widget.RelativeLayout
+import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.core.content.ContextCompat
-import com.google.firebase.crashlytics.FirebaseCrashlytics
+import com.google.android.material.snackbar.Snackbar
+import com.squareup.picasso.Picasso
+import kotlinx.coroutines.*
+import java.io.IOException
 
 
 class MainActivity : AppCompatActivity(), ViewTreeObserver.OnGlobalLayoutListener {
 
     private lateinit var rlImage: RelativeLayout
+    private lateinit var rlContent: RelativeLayout
     private lateinit var viewContent: View
     private lateinit var ivFileUpload: ImageView
     private lateinit var imageView: ImageView
@@ -49,6 +57,10 @@ class MainActivity : AppCompatActivity(), ViewTreeObserver.OnGlobalLayoutListene
             return if (is3x3) 1f else .666f
         }
 
+    private val completableJob = Job()
+    private val coroutineScope = CoroutineScope(Dispatchers.IO + completableJob)
+
+    private lateinit var progressBar: View
 
     override fun onCreate(savedInstanceState: Bundle?) {
 
@@ -56,6 +68,7 @@ class MainActivity : AppCompatActivity(), ViewTreeObserver.OnGlobalLayoutListene
         setContentView(R.layout.activity_main)
 
         rlImage = findViewById(R.id.rlImage)
+        rlContent = findViewById(R.id.rlContent)
         viewContent = findViewById(R.id.viewContent)
         cl3x3 = findViewById(R.id.cl3x3)
         cl3x2 = findViewById(R.id.cl3x2)
@@ -66,6 +79,8 @@ class MainActivity : AppCompatActivity(), ViewTreeObserver.OnGlobalLayoutListene
         ivFileUpload = findViewById(R.id.ivFileUpload)
         imageView = findViewById(R.id.imageView)
         btnCrop = findViewById(R.id.btnCrop)
+
+        progressBar = findViewById(R.id.progressBar)
 
         findViewById<ImageView>(R.id.ivFileUpload).setOnClickListener {
             chooseImage()
@@ -81,38 +96,23 @@ class MainActivity : AppCompatActivity(), ViewTreeObserver.OnGlobalLayoutListene
         findViewById<Button>(R.id.btnCrop).setOnClickListener {
             crop()
         }
+        if (savedInstanceState != null && savedInstanceState.containsKey("DATA")) {
+            dataUri = Uri.parse(savedInstanceState.getString("DATA", ""))
+            is3x3 = savedInstanceState.getBoolean("GRID", false)
+        }
+
         initLayout()
         addGrid(is3x3)
     }
 
-    override fun onStart() {
-        super.onStart()
-        when {
-            ContextCompat.checkSelfPermission(
-                this,
-                Manifest.permission.WRITE_EXTERNAL_STORAGE
-            ) == PackageManager.PERMISSION_GRANTED -> {
-                // You can use the API that requires the permission.
-            }
-            shouldShowRequestPermissionRationale(Manifest.permission.WRITE_EXTERNAL_STORAGE) -> {
-                // In an educational UI, explain to the user why your app requires this
-                // permission for a specific feature to behave as expected. In this UI,
-                // include a "cancel" or "no thanks" button that allows the user to
-                // continue using your app without granting the permission.
-                showInContextUI()
-            }
-            else -> {
-                // You can directly ask for the permission.
-                // The registered ActivityResultCallback gets the result of this request.
-                requestPermissionLauncher.launch(
-                    Manifest.permission.WRITE_EXTERNAL_STORAGE
-                )
-            }
-        }
+    override fun onSaveInstanceState(outState: Bundle) {
+        if (dataUri != null)
+            outState.putString("DATA", dataUri.toString())
+        outState.putBoolean("GRID", is3x3)
+        super.onSaveInstanceState(outState)
     }
 
     private fun addGrid(is3x3: Boolean) {
-        if (this.is3x3 == is3x3) return
 
         this.is3x3 = is3x3
         if (is3x3) {
@@ -153,23 +153,7 @@ class MainActivity : AppCompatActivity(), ViewTreeObserver.OnGlobalLayoutListene
             chooseImage()
             return
         }
-
-        val bitmap = (imageView.drawable as BitmapDrawable).bitmap
-        val bitmapList = cropImageByGrid(bitmap)
-
-        val imageRepository = ImageRepository(this)
-
-        if (bitmapList.isNotEmpty()) {
-            imageRepository.save(bitmapList)
-        } else {
-            FirebaseCrashlytics.getInstance().log("Resim parçalanırken hata oluştu")
-            Toast.makeText(
-                this,
-                "Resim parçalanırken hata oluştu. Hata bildirimi gönderildi.",
-                Toast.LENGTH_SHORT
-            ).show()
-        }
-
+        saveImageToUrl()
     }
 
 
@@ -220,31 +204,6 @@ class MainActivity : AppCompatActivity(), ViewTreeObserver.OnGlobalLayoutListene
         )
     }
 
-    private fun scaleBitmap(bm: Bitmap): Bitmap {
-        var width = bm.width
-        var height = bm.height
-        when {
-            width > height -> {
-                // landscape
-                val ratio = width.toFloat() / maxWidth
-                width = maxWidth
-                height = (height / ratio).toInt()
-            }
-            height > width -> {
-                // portrait
-                val ratio = height.toFloat() / maxHeight
-                height = maxHeight
-                width = (width / ratio).toInt()
-            }
-            else -> {
-                // square
-                height = maxHeight
-                width = maxWidth
-            }
-        }
-        return Bitmap.createScaledBitmap(bm, width, height, true)
-    }
-
 
     private fun showInContextUI() {
         AlertDialog.Builder(this)
@@ -257,6 +216,12 @@ class MainActivity : AppCompatActivity(), ViewTreeObserver.OnGlobalLayoutListene
                     )
                 }
             }
+            .setNegativeButton("İPTAL") { _, _ ->
+                run {
+                    Snackbar.make(rlContent, "İzin alınamadı", Snackbar.LENGTH_LONG).show()
+                }
+            }
+            .create().show()
     }
 
     private val requestPermissionLauncher =
@@ -266,14 +231,18 @@ class MainActivity : AppCompatActivity(), ViewTreeObserver.OnGlobalLayoutListene
             if (isGranted) {
                 // Permission is granted. Continue the action or workflow in your
                 // app.
-                Log.d("TAG", ": Granted")
+                writeImageToFile()
             } else {
                 // Explain to the user that the feature is unavailable because the
                 // features requires a permission that the user has denied. At the
                 // same time, respect the user's decision. Don't link to system
                 // settings in an effort to convince the user to change their
                 // decision.
-                Toast.makeText(this, "İZİN ALINAMADI", Toast.LENGTH_SHORT).show()
+                Snackbar.make(
+                    rlContent,
+                    "Yazma izni alınamadı. Fotoğraf kaydedilemez",
+                    Snackbar.LENGTH_LONG
+                ).show()
             }
         }
 
@@ -283,13 +252,18 @@ class MainActivity : AppCompatActivity(), ViewTreeObserver.OnGlobalLayoutListene
                 // There are no request codes
                 val data: Intent? = result.data
                 dataUri = data!!.data
-                imageView.setImageURI(dataUri)
-                imageView.setImageBitmap(getResultBitmap(scaleBitmap((imageView.drawable as BitmapDrawable).bitmap)))
+                Picasso.get()
+                    .load(dataUri)
+                    .resize(maxWidth, maxHeight)
+                    .centerCrop()
+                    .into(imageView)
             }
         }
 
     override fun onGlobalLayout() {
         rlImage.viewTreeObserver.removeOnGlobalLayoutListener(this)
+//        rlImage.visibility = View.INVISIBLE
+//        imageView.visibility = View.INVISIBLE
         val width: Int = viewContent.measuredWidth
         val height: Int = viewContent.measuredHeight
         if (width != 0 && height != 0) {
@@ -307,10 +281,14 @@ class MainActivity : AppCompatActivity(), ViewTreeObserver.OnGlobalLayoutListene
             params.addRule(RelativeLayout.CENTER_IN_PARENT, RelativeLayout.TRUE)
             rlImage.layoutParams = params
         }
-
+//        rlImage.visibility = View.VISIBLE
+//        imageView.visibility = View.VISIBLE
         if (dataUri == null) return
-        imageView.setImageURI(dataUri)
-        imageView.setImageBitmap(getResultBitmap(scaleBitmap((imageView.drawable as BitmapDrawable).bitmap)))
+        Picasso.get()
+            .load(dataUri)
+            .resize(maxWidth, maxHeight)
+            .centerCrop()
+            .into(imageView)
     }
 
     private fun isExternalStorageReadOnly(): Boolean {
@@ -321,6 +299,99 @@ class MainActivity : AppCompatActivity(), ViewTreeObserver.OnGlobalLayoutListene
     private fun isExternalStorageAvailable(): Boolean {
         val extStorageState = Environment.getExternalStorageState()
         return Environment.MEDIA_MOUNTED == extStorageState
+    }
+
+    private fun saveImageToUrl() {
+        try {
+            checkForPermission()
+        } catch (e: IOException) {
+            e.printStackTrace()
+        }
+    }
+
+    private fun checkForPermission() {
+        when {
+            ContextCompat.checkSelfPermission(
+                applicationContext,
+                Manifest.permission.WRITE_EXTERNAL_STORAGE
+            ) == PackageManager.PERMISSION_GRANTED -> {
+                // You can use the API that requires the permission.
+                writeImageToFile()
+            }
+            shouldShowRequestPermissionRationale(Manifest.permission.WRITE_EXTERNAL_STORAGE) -> {
+                // In an educational UI, explain to the user why your app requires this
+                // permission for a specific feature to behave as expected. In this UI,
+                // include a "cancel" or "no thanks" button that allows the user to
+                // continue using your app without granting the permission.
+                showInContextUI()
+            }
+            else -> {
+                // You can directly ask for the permission.
+                // The registered ActivityResultCallback gets the result of this request.
+                requestPermissionLauncher.launch(
+                    Manifest.permission.WRITE_EXTERNAL_STORAGE
+                )
+            }
+        }
+    }
+
+
+    private fun writeImageToFile() {
+        coroutineScope.launch(Dispatchers.IO) {
+            withContext(Dispatchers.Main) {
+                progressBar.visibility = View.VISIBLE
+            }
+
+            val bitmap = (imageView.drawable as BitmapDrawable).bitmap
+            val bitmapList = cropImageByGrid(bitmap)
+            for (tempBitmap in bitmapList) {
+                initImageSaving(tempBitmap)
+            }
+
+            withContext(Dispatchers.Main) {
+                progressBar.visibility = View.GONE
+                Snackbar.make(rlContent, R.string.image_saved, Snackbar.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    private fun initImageSaving(bitmap: Bitmap) {
+        val relativeLocation = Environment.DIRECTORY_PICTURES
+        val contentValues = ContentValues().apply {
+            put(MediaStore.MediaColumns.DISPLAY_NAME, System.currentTimeMillis().toString())
+            put(MediaStore.MediaColumns.MIME_TYPE, "image/jpeg")
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                put(MediaStore.MediaColumns.RELATIVE_PATH, relativeLocation)
+                put(MediaStore.MediaColumns.IS_PENDING, 1)
+            }
+        }
+
+        val resolver = contentResolver
+
+        val uri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
+
+        try {
+
+            uri?.let { uri ->
+                val stream = resolver.openOutputStream(uri)
+
+                stream?.let {
+                    if (!bitmap.compress(Bitmap.CompressFormat.JPEG, 80, it)) {
+                        throw IOException("Failed to save bitmap.")
+                    }
+                } ?: throw IOException("Failed to get output stream.")
+
+            } ?: throw IOException("Failed to create new MediaStore record")
+
+        } catch (e: IOException) {
+            if (uri != null) {
+                resolver.delete(uri, null, null)
+            }
+            throw IOException(e)
+        } finally {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q)
+                contentValues.put(MediaStore.MediaColumns.IS_PENDING, 0)
+        }
     }
 
 }

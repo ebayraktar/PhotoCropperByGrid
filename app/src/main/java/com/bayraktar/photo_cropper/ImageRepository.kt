@@ -8,6 +8,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
+import android.util.Log
 import androidx.annotation.RequiresApi
 import io.reactivex.rxjava3.android.schedulers.AndroidSchedulers
 import io.reactivex.rxjava3.core.Observable
@@ -36,13 +37,30 @@ class ImageRepository(private val context: Context) {
 
             override fun onNext(bitmaps: List<Bitmap>) {
 
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    for (element in bitmaps)
-                        saveImageInQ(element)
-                } else {
-                    for (element in bitmaps)
-                        saveTheImageLegacyStyle(element)
+                for (bitmap in bitmaps) {
+                    val contentValues = ContentValues().apply {
+                        put(
+                            MediaStore.MediaColumns.DISPLAY_NAME,
+                            System.currentTimeMillis().toString()
+                        )
+                        put(MediaStore.MediaColumns.MIME_TYPE, "image/jpeg")
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) { //this one
+                            put(
+                                MediaStore.MediaColumns.RELATIVE_PATH,
+                                Environment.DIRECTORY_PICTURES + File.separator + "PhotoCropper"
+                            )
+                            put(MediaStore.MediaColumns.IS_PENDING, 1)
+                        }
+                    }
                 }
+
+//                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+//                    for (element in bitmaps)
+//                        saveImageInQ(element)
+//                } else {
+//                    for (element in bitmaps)
+//                        saveTheImageLegacyStyle(element)
+//                }
             }
 
             override fun onError(e: Throwable?) {
@@ -63,6 +81,9 @@ class ImageRepository(private val context: Context) {
         observable
             .subscribeOn(Schedulers.io())
             .observeOn(AndroidSchedulers.mainThread())
+            .doOnError {
+                Log.d("TAG", "save: " + it.message)
+            }
             .subscribe(observer)
 
     }
@@ -70,18 +91,14 @@ class ImageRepository(private val context: Context) {
     //Make sure to call this function on a worker thread, else it will block main thread
     private fun saveTheImageLegacyStyle(bitmap: Bitmap) {
         val filename = "IMG_${System.currentTimeMillis()}.jpg"
-        val folderName = Environment.getExternalStoragePublicDirectory(
-            Environment.DIRECTORY_PICTURES + "/PhotoCropper"
-        )
-        if (!folderName.exists() && !folderName.mkdir())
-            throw RuntimeException("PhotoCropper klasörü oluşturulamadı!")
+        val folderName = File(Environment.DIRECTORY_DCIM)
 
         val file = File(
             folderName, filename
         )
 
         val out = FileOutputStream(file)
-        bitmap.compress(Bitmap.CompressFormat.JPEG, 100, out)
+        bitmap.compress(Bitmap.CompressFormat.JPEG, 95, out)
         out.flush()
         out.close()
     }
@@ -98,7 +115,7 @@ class ImageRepository(private val context: Context) {
             put(MediaStore.MediaColumns.MIME_TYPE, "image/jpg")
             put(
                 MediaStore.MediaColumns.RELATIVE_PATH,
-                Environment.DIRECTORY_PICTURES + "/PhotoCropper"
+                Environment.DIRECTORY_PICTURES + File.separator + "PhotoCropper"
             )
             put(MediaStore.Video.Media.IS_PENDING, 1)
         }
@@ -111,10 +128,11 @@ class ImageRepository(private val context: Context) {
             fos = imageUri?.let { resolver.openOutputStream(it) }
         }
 
-        fos?.use { bitmap.compress(Bitmap.CompressFormat.JPEG, 70, it) }
+        fos?.use { bitmap.compress(Bitmap.CompressFormat.JPEG, 95, it) }
 
         contentValues.clear()
         contentValues.put(MediaStore.Video.Media.IS_PENDING, 0)
         imageUri?.let { contentResolver.update(it, contentValues, null, null) }
     }
+
 }
