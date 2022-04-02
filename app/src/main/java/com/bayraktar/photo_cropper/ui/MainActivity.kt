@@ -19,7 +19,6 @@ import com.bayraktar.photo_cropper.core.BaseActivity
 import com.bayraktar.photo_cropper.core.markers.ViewEvent
 import com.bayraktar.photo_cropper.databinding.ActivityMainBinding
 import com.bayraktar.photo_cropper.repositories.ImageRepository
-import com.google.android.material.snackbar.Snackbar
 import com.squareup.picasso.Picasso
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
@@ -51,22 +50,14 @@ class MainActivity : BaseActivity<ActivityMainBinding, MainViewModel>(
             if (isGranted) {
                 // Permission is granted. Continue the action or workflow in your
                 // app.
-                viewModel.writeImageToFile(
-                    (binding.imageView.drawable as BitmapDrawable).bitmap,
-                    is3x3
-                )
-//                writeImageToFile()
+                writeToExternal()
             } else {
                 // Explain to the user that the feature is unavailable because the
                 // features requires a permission that the user has denied. At the
                 // same time, respect the user's decision. Don't link to system
                 // settings in an effort to convince the user to change their
                 // decision.
-                Snackbar.make(
-                    binding.rlContent,
-                    "Yazma izni alınamadı. Fotoğraf kaydedilemez",
-                    Snackbar.LENGTH_LONG
-                ).show()
+                showError("Yazma izni alınamadı. Fotoğraf kaydedilemez")
             }
         }
 
@@ -87,21 +78,6 @@ class MainActivity : BaseActivity<ActivityMainBinding, MainViewModel>(
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
-//        binding.ivFileUpload.setOnClickListener {
-//            chooseImage()
-//        }
-
-//        binding.tv3x2.setOnClickListener {
-//            addGrid(false)
-//        }
-//        binding.tv3x3.setOnClickListener {
-//            addGrid(true)
-//        }
-
-//        binding.btnCrop.setOnClickListener {
-//            crop()
-//        }
         if (savedInstanceState != null && savedInstanceState.containsKey(DATA)) {
             dataUri = Uri.parse(savedInstanceState.getString(DATA, ""))
             is3x3 = savedInstanceState.getBoolean(GRID, false)
@@ -151,10 +127,7 @@ class MainActivity : BaseActivity<ActivityMainBinding, MainViewModel>(
         super.onViewEvent(viewEvent)
         when (viewEvent) {
             is MainViewEvent.WriteImage -> {
-                viewModel.writeImageToFile(
-                    (binding.imageView.drawable as BitmapDrawable).bitmap,
-                    is3x3
-                )
+                writeToExternal()
             }
             is MainViewEvent.CheckPermission -> {
                 checkForPermission()
@@ -173,24 +146,18 @@ class MainActivity : BaseActivity<ActivityMainBinding, MainViewModel>(
             .setTitle("UYARI")
             .setMessage("Uygulama çalışmak için dosya okuma/yazma iznine ihtiyaç duymaktadır")
             .setPositiveButton("İZİN İSTE") { _, _ ->
-                run {
-                    requestPermissionLauncher.launch(
-                        Manifest.permission.WRITE_EXTERNAL_STORAGE
-                    )
-                }
+                requestPermissionLauncher.launch(
+                    Manifest.permission.WRITE_EXTERNAL_STORAGE
+                )
             }
             .setNegativeButton("İPTAL") { _, _ ->
-                run {
-                    Snackbar.make(binding.rlContent, "İzin alınamadı", Snackbar.LENGTH_LONG).show()
-                }
+                showError("İzin alınamadı")
             }
             .create().show()
     }
 
     override fun onGlobalLayout() {
         binding.rlImage.viewTreeObserver.removeOnGlobalLayoutListener(this)
-//        rlImage.visibility = View.INVISIBLE
-//        imageView.visibility = View.INVISIBLE
         val width: Int = binding.viewContent.measuredWidth
         val height: Int = binding.viewContent.measuredHeight
         if (width != 0 && height != 0) {
@@ -208,8 +175,6 @@ class MainActivity : BaseActivity<ActivityMainBinding, MainViewModel>(
             params.addRule(RelativeLayout.CENTER_IN_PARENT, RelativeLayout.TRUE)
             binding.rlImage.layoutParams = params
         }
-//        rlImage.visibility = View.VISIBLE
-//        imageView.visibility = View.VISIBLE
         if (dataUri == null) return
         Picasso.get()
             .load(dataUri)
@@ -225,10 +190,7 @@ class MainActivity : BaseActivity<ActivityMainBinding, MainViewModel>(
                 Manifest.permission.WRITE_EXTERNAL_STORAGE
             ) == PackageManager.PERMISSION_GRANTED -> {
                 // You can use the API that requires the permission.
-                viewModel.writeImageToFile(
-                    (binding.imageView.drawable as BitmapDrawable).bitmap,
-                    is3x3
-                )
+                writeToExternal()
             }
             shouldShowRequestPermissionRationale(Manifest.permission.WRITE_EXTERNAL_STORAGE) -> {
                 // In an educational UI, explain to the user why your app requires this
@@ -245,6 +207,13 @@ class MainActivity : BaseActivity<ActivityMainBinding, MainViewModel>(
                 )
             }
         }
+    }
+
+    private fun writeToExternal() {
+        viewModel.writeImageToFile(
+            (binding.imageView.drawable as BitmapDrawable).bitmap,
+            is3x3
+        )
     }
 
     companion object {

@@ -18,6 +18,7 @@ import com.bayraktar.photo_cropper.core.markers.ViewEvent
 import com.bayraktar.photo_cropper.ext.observe
 import com.bayraktar.photo_cropper.ext.observeEvent
 import com.bayraktar.photo_cropper.utils.findGenericSuperclass
+import com.google.android.material.snackbar.Snackbar
 
 /**
  * Created by emrebayraktar on 31,March,2022
@@ -90,7 +91,7 @@ abstract class BaseActivity<B : ViewDataBinding, M : BaseViewModel>(
 
     fun showMessage(type: CommonViewEvent.MessageType, message: String) {
         // TODO: 31.03.2022 DefaultSnackBar.build(this, type, message).show()
-        Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+        Snackbar.make(binding.root, message, Snackbar.LENGTH_LONG).show()
     }
 
     fun showToast(icon: Int, text: String) {

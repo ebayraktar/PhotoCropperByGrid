@@ -9,7 +9,6 @@ import com.bayraktar.photo_cropper.repositories.ImageRepository
 import com.bayraktar.photo_cropper.utils.ImageUtils
 import com.bayraktar.photo_cropper.utils.StorageUtils
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -45,16 +44,14 @@ class MainViewModel @Inject constructor(private val imageRepository: ImageReposi
 
     fun addGrid(is3x3: Boolean) = sendViewEvent(MainViewEvent.Grid(is3x3))
 
-
     fun writeImageToFile(bitmap: Bitmap, is3x3: Boolean) {
-        viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch {
             showLoading()
             val bitmapList = ImageUtils.cropImageByGrid(bitmap, is3x3)
             imageRepository.save(bitmapList,
                 onError = {
                     hideLoading()
                     showError("Hata: " + it?.message)
-
                 },
                 onComplete = {
                     hideLoading()
